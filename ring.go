@@ -139,13 +139,22 @@ func (s *Service) RemoveNode(name string) error {
 	}
 	delete(s.nodes, name)
 
-	kept := s.ring[:0]
+	// Filter the removed node's virtual positions out of the ring in place.
+	// ringEntry holds a `node string` reference, so the trailing slots that fall
+	// out of use after compaction must be zeroed: otherwise the underlying array
+	// keeps the stale string alive and the GC cannot reclaim it. Under repeated
+	// add/remove churn those retained references accumulate, leaking memory.
+	n := 0
 	for _, e := range s.ring {
 		if e.node != name {
-			kept = append(kept, e)
+			s.ring[n] = e
+			n++
 		}
 	}
-	s.ring = kept
+	for i := n; i < len(s.ring); i++ {
+		s.ring[i] = ringEntry{}
+	}
+	s.ring = s.ring[:n]
 	return nil
 }
 
